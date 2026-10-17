@@ -205,7 +205,7 @@ def get_progress(
             conditions.append("realisasi IS NOT NULL AND target > 0 AND (CAST(realisasi AS REAL)/target*100) >= ?")
             params.append(threshold)
         elif status == STATUS_TIDAK_TERCAPAI:
-            conditions.append("realisasi IS NOT NULL AND target > 0 AND (CAST(realisasi AS REAL)/target*100) < ?")
+            conditions.append("((realisasi IS NOT NULL AND target > 0 AND (CAST(realisasi AS REAL)/target*100) < ?) OR target IS NULL OR target <= 0 OR realisasi IS NULL)")
             params.append(threshold)
         elif status in (STATUS_DATA_TIDAK_LENGKAP, STATUS_BELUM_DIISI):
             conditions.append("((target IS NULL OR target <= 0) OR realisasi IS NULL)")
@@ -259,7 +259,7 @@ def count_progress(
         if status == STATUS_TERCAPAI:
             conditions.append("realisasi IS NOT NULL AND target > 0 AND (CAST(realisasi AS REAL)/target*100) >= ?"); params.append(threshold)
         elif status == STATUS_TIDAK_TERCAPAI:
-            conditions.append("realisasi IS NOT NULL AND target > 0 AND (CAST(realisasi AS REAL)/target*100) < ?"); params.append(threshold)
+            conditions.append("((realisasi IS NOT NULL AND target > 0 AND (CAST(realisasi AS REAL)/target*100) < ?) OR target IS NULL OR target <= 0 OR realisasi IS NULL)"); params.append(threshold)
         elif status in (STATUS_DATA_TIDAK_LENGKAP, STATUS_BELUM_DIISI):
             conditions.append("((target IS NULL OR target <= 0) OR realisasi IS NULL)")
 

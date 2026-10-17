@@ -15,6 +15,7 @@ class AppShell:
         self.page = page
         self.editing_id = None
         self.detail_status = None
+        self.detail_filters = {}
         self.body = ft.Container(expand=True)
         self.notice = ft.SnackBar(content=ft.Text(''))
         self.page.snack_bar = self.notice
@@ -82,6 +83,7 @@ class AppShell:
                 self.toast('Tanggal mulai tidak boleh setelah tanggal selesai.', error=True)
                 return
             filters = current_filters()
+            self.detail_filters = dict(filters)
             stats = service.get_dashboard_stats(**filters)
             statuses = service.get_dashboard_status_counts(**filters)
             periods = service.get_dashboard_period_data(period.value, **filters)
@@ -138,9 +140,22 @@ class AppShell:
         return ft.Container(**properties)
 
     def _kpi_card(self, title, value, detail, color, icon, on_click=None):
-        return ft.Container(width=190, padding=16, bgcolor='white', border_radius=16, on_click=on_click, animate=ft.Animation(250, ft.AnimationCurve.EASE_OUT), shadow=ft.BoxShadow(blur_radius=16, color='#120F2340', offset=ft.Offset(0, 4)), content=ft.Column([
+        action = None
+        if title in ('Selesai', 'Tidak tercapai'):
+            action = ft.TextButton('Lihat semua data', icon=ft.icons.OPEN_IN_NEW, on_click=on_click,
+                                   style=ft.ButtonStyle(color=COLORS['primary_light'], bgcolor='#EEF4FA',
+                                                        shape=ft.RoundedRectangleBorder(radius=18),
+                                                        padding=ft.padding.symmetric(horizontal=10, vertical=6)))
+        controls = [
             ft.Row([ft.Container(width=34, height=34, border_radius=10, bgcolor=color, alignment=ft.alignment.center, content=ft.Icon(icon, color='white', size=18)), ft.Container(expand=True), ft.Icon(ft.icons.ARROW_OUTWARD, size=14, color=COLORS['text_light'])]),
-            ft.Text(title, size=12, color=COLORS['text_secondary']), ft.Text(value, size=23, weight=ft.FontWeight.BOLD, color=COLORS['text_primary']), ft.Text(detail, size=11, color=COLORS['text_secondary'])
+            ft.Text(title, size=12, color=COLORS['text_secondary']),
+            ft.Text(value, size=23, weight=ft.FontWeight.BOLD, color=COLORS['text_primary']),
+            ft.Text(detail, size=11, color=COLORS['text_secondary']),
+        ]
+        if action is not None:
+            controls.append(action)
+        return ft.Container(width=190, padding=16, bgcolor='white', border_radius=16, on_click=on_click, animate=ft.Animation(250, ft.AnimationCurve.EASE_OUT), shadow=ft.BoxShadow(blur_radius=16, color='#120F2340', offset=ft.Offset(0, 4)), content=ft.Column([
+            *controls
         ], spacing=7))
 
     def _open_status_detail(self, status):
@@ -315,12 +330,21 @@ class AppShell:
         search = ft.TextField(label='Cari pekerjaan, PIC, rincian...', expand=True)
         tanggal_mulai = self.date_picker('Tanggal mulai', width=170, default_today=False)
         tanggal_selesai = self.date_picker('Tanggal selesai', width=170, default_today=False)
-        tahun = ft.Dropdown(label='Tahun', width=130, options=[ft.dropdown.Option('Semua'), *[ft.dropdown.Option(str(y)) for y in service.get_distinct_tahun()]], value='Semua')
-        meja = ft.Dropdown(label='Meja', width=150, options=[ft.dropdown.Option('Semua'), *[ft.dropdown.Option(x) for x in MEJA_OPTIONS]], value='Semua')
+        initial_year = self.detail_filters.get('tahun')
+        tahun = ft.Dropdown(label='Tahun', width=130, options=[ft.dropdown.Option('Semua'), *[ft.dropdown.Option(str(y)) for y in service.get_distinct_tahun()]], value=str(initial_year) if initial_year else 'Semua')
+        meja = ft.Dropdown(label='Meja', width=150, options=[ft.dropdown.Option('Semua'), *[ft.dropdown.Option(x) for x in MEJA_OPTIONS]], value=self.detail_filters.get('meja') or 'Semua')
+        if self.detail_filters.get('tanggal_mulai'):
+            tanggal_mulai.data['iso'] = self.detail_filters['tanggal_mulai']
+            tanggal_mulai.value = service.format_tanggal(self.detail_filters['tanggal_mulai'])
+        if self.detail_filters.get('tanggal_selesai'):
+            tanggal_selesai.data['iso'] = self.detail_filters['tanggal_selesai']
+            tanggal_selesai.value = service.format_tanggal(self.detail_filters['tanggal_selesai'])
         table = ft.DataTable(columns=[ft.DataColumn(ft.Text(x)) for x in ['Tanggal', 'Meja', 'PIC', 'Pekerjaan', 'Target', 'Realisasi', 'Progress', 'Status', 'Aksi']], rows=[])
+        count_label = ft.Text('', color=COLORS['text_secondary'])
 
         def load(e=None):
             data = service.get_progress(tahun=None if tahun.value == 'Semua' else int(tahun.value), status=self.detail_status, tanggal_mulai=tanggal_mulai.data['iso'], tanggal_selesai=tanggal_selesai.data['iso'], meja=None if meja.value == 'Semua' else meja.value, keyword=search.value.strip() or None)
+            count_label.value = f'{len(data)} data ditemukan'
             table.rows = [ft.DataRow(cells=[ft.DataCell(ft.Text(service.format_tanggal(p.tanggal))), ft.DataCell(ft.Text(p.meja)), ft.DataCell(ft.Text(p.nama_pic)), ft.DataCell(ft.Text(p.pekerjaan, max_lines=2)), ft.DataCell(ft.Text(service.format_angka(p.target))), ft.DataCell(ft.Text(service.format_angka(p.realisasi))), ft.DataCell(ft.Text(service.format_persen(p.progress_pct))), ft.DataCell(ft.Text(p.status)), ft.DataCell(ft.Row([ft.IconButton(ft.icons.EDIT_OUTLINED, tooltip='Edit', on_click=lambda _, pid=p.id: edit(pid)), ft.IconButton(ft.icons.DELETE_OUTLINE, tooltip='Hapus', on_click=lambda _, pid=p.id: delete(pid))]))]) for p in data]
             self.page.update()
 
@@ -340,10 +364,9 @@ class AppShell:
 
         search.on_submit = load
         meja.on_change = load; tahun.on_change = load
-        self.detail_status = self.detail_status
         load()
         label = f"Data Progress{(' - ' + self.detail_status) if self.detail_status else ''}"
-        return ft.Column([self.title(label, 'Pencarian dan pemantauan seluruh catatan'), ft.Row([tahun, tanggal_mulai, tanggal_selesai]), ft.Row([search, meja, ft.ElevatedButton('Cari', on_click=load), ft.TextButton('Kembali Dashboard', on_click=lambda _: self.render('Dashboard'))]), ft.Container(content=table, bgcolor='white', padding=10)], scroll=ft.ScrollMode.AUTO, expand=True)
+        return ft.Column([self.title(label, 'Pencarian dan pemantauan seluruh catatan'), ft.Row([tahun, tanggal_mulai, tanggal_selesai]), ft.Row([search, meja, ft.ElevatedButton('Cari', on_click=load), ft.OutlinedButton('Refresh', icon=ft.icons.REFRESH, on_click=load), ft.TextButton('Kembali Dashboard', on_click=lambda _: self.render('Dashboard'))]), count_label, ft.Container(content=table, bgcolor='white', padding=10)], scroll=ft.ScrollMode.AUTO, expand=True)
 
     def daily_report(self):
         tanggal = self.date_picker('Tanggal')
