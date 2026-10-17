@@ -40,14 +40,14 @@ class Progress:
     @property
     def status(self) -> str:
         """Mengembalikan status pencapaian."""
-        from app.config import DEFAULT_ACHIEVEMENT_THRESHOLD
-        threshold = DEFAULT_ACHIEVEMENT_THRESHOLD * 100  # Convert to percentage
+        from app.services.progress_service import get_threshold_pct
+        threshold = get_threshold_pct()
 
         if not self.nama_pic or not self.pekerjaan:
             return "DATA TIDAK LENGKAP"
         if self.realisasi is None:
             return "BELUM DIISI"
-        if self.target is None or self.target == 0:
+        if self.target is None or self.target <= 0:
             return "DATA TIDAK LENGKAP"
         pct = self.progress_pct
         if pct is None:

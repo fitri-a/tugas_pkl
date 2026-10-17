@@ -168,6 +168,8 @@ def get_progress(
     nama_pic: str = None,
     pekerjaan: str = None,
     keyword: str = None,
+    tahun: int = None,
+    status: str = None,
     limit: int = None,
     offset: int = 0,
     order_by: str = 'tanggal DESC, id DESC'
@@ -194,6 +196,19 @@ def get_progress(
     if keyword:
         conditions.append("(pekerjaan LIKE ? OR rincian_pengerjaan LIKE ? OR nama_pic LIKE ? OR keterangan LIKE ?)")
         params.extend([f"%{keyword}%"] * 4)
+    if tahun:
+        conditions.append("strftime('%Y', tanggal)=?")
+        params.append(str(tahun))
+    if status:
+        threshold = get_threshold_pct()
+        if status == STATUS_TERCAPAI:
+            conditions.append("realisasi IS NOT NULL AND target > 0 AND (CAST(realisasi AS REAL)/target*100) >= ?")
+            params.append(threshold)
+        elif status == STATUS_TIDAK_TERCAPAI:
+            conditions.append("realisasi IS NOT NULL AND target > 0 AND (CAST(realisasi AS REAL)/target*100) < ?")
+            params.append(threshold)
+        elif status in (STATUS_DATA_TIDAK_LENGKAP, STATUS_BELUM_DIISI):
+            conditions.append("((target IS NULL OR target <= 0) OR realisasi IS NULL)")
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     query = f"SELECT * FROM progress {where} ORDER BY {order_by}"
@@ -212,6 +227,8 @@ def count_progress(
     nama_pic: str = None,
     pekerjaan: str = None,
     keyword: str = None,
+    tahun: int = None,
+    status: str = None,
 ) -> int:
     """Menghitung jumlah record progress dengan filter."""
     conditions = []
@@ -235,6 +252,16 @@ def count_progress(
     if keyword:
         conditions.append("(pekerjaan LIKE ? OR rincian_pengerjaan LIKE ? OR nama_pic LIKE ? OR keterangan LIKE ?)")
         params.extend([f"%{keyword}%"] * 4)
+    if tahun:
+        conditions.append("strftime('%Y', tanggal)=?"); params.append(str(tahun))
+    if status:
+        threshold = get_threshold_pct()
+        if status == STATUS_TERCAPAI:
+            conditions.append("realisasi IS NOT NULL AND target > 0 AND (CAST(realisasi AS REAL)/target*100) >= ?"); params.append(threshold)
+        elif status == STATUS_TIDAK_TERCAPAI:
+            conditions.append("realisasi IS NOT NULL AND target > 0 AND (CAST(realisasi AS REAL)/target*100) < ?"); params.append(threshold)
+        elif status in (STATUS_DATA_TIDAK_LENGKAP, STATUS_BELUM_DIISI):
+            conditions.append("((target IS NULL OR target <= 0) OR realisasi IS NULL)")
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     row = execute_query(f"SELECT COUNT(*) as cnt FROM progress {where}", tuple(params), fetch='one')
@@ -294,7 +321,8 @@ def get_dashboard_stats(tahun: int = None, meja: str = None, tanggal_mulai: str 
                        AND (CAST(realisasi AS REAL)/target*100) >= {threshold} THEN 1 END) as jumlah_tercapai,
             COUNT(CASE WHEN realisasi IS NOT NULL AND target > 0
                        AND (CAST(realisasi AS REAL)/target*100) < {threshold} THEN 1 END) as jumlah_tidak_tercapai,
-            COUNT(CASE WHEN realisasi IS NULL THEN 1 END) as jumlah_belum_diisi
+            COUNT(CASE WHEN realisasi IS NULL AND target > 0 THEN 1 END) as jumlah_belum_diisi,
+            COUNT(CASE WHEN target IS NULL OR target <= 0 OR nama_pic IS NULL OR pekerjaan IS NULL THEN 1 END) as jumlah_tidak_lengkap
         FROM progress {where}
     """
     row = execute_query(query, tuple(params), fetch='one')
@@ -313,6 +341,7 @@ def get_dashboard_stats(tahun: int = None, meja: str = None, tanggal_mulai: str 
         'jumlah_tercapai': row['jumlah_tercapai'],
         'jumlah_tidak_tercapai': row['jumlah_tidak_tercapai'],
         'jumlah_belum_diisi': row['jumlah_belum_diisi'],
+        'jumlah_tidak_lengkap': row['jumlah_tidak_lengkap'],
     }
 
 
@@ -325,8 +354,8 @@ def get_dashboard_status_counts(**filters) -> Dict[str, int]:
         SELECT
           COUNT(CASE WHEN realisasi IS NOT NULL AND target > 0 AND realisasi / target * 100 >= ? THEN 1 END) AS selesai,
           COUNT(CASE WHEN realisasi IS NOT NULL AND target > 0 AND realisasi / target * 100 < ? THEN 1 END) AS proses,
-          COUNT(CASE WHEN realisasi IS NULL THEN 1 END) AS belum_diisi,
-          COUNT(CASE WHEN (target IS NULL OR target = 0) AND realisasi IS NOT NULL THEN 1 END) AS tidak_lengkap
+          COUNT(CASE WHEN realisasi IS NULL AND target > 0 THEN 1 END) AS belum_diisi,
+          COUNT(CASE WHEN target IS NULL OR target <= 0 OR nama_pic IS NULL OR pekerjaan IS NULL THEN 1 END) AS tidak_lengkap
         FROM progress {where}
     """, (threshold, threshold, *params), fetch='one')
     return {key: int(row[key] or 0) for key in ('selesai', 'proses', 'belum_diisi', 'tidak_lengkap')}
@@ -586,7 +615,7 @@ def hitung_status(realisasi, target, threshold_pct: float) -> str:
     """Fungsi utilitas hitung status pencapaian."""
     if realisasi is None:
         return STATUS_BELUM_DIISI
-    if target is None or target == 0:
+    if target is None or target <= 0:
         return STATUS_DATA_TIDAK_LENGKAP
     pct = (realisasi / target) * 100
     return STATUS_TERCAPAI if pct >= threshold_pct else STATUS_TIDAK_TERCAPAI
