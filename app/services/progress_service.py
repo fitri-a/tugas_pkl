@@ -319,10 +319,8 @@ def get_dashboard_stats(tahun: int = None, meja: str = None, tanggal_mulai: str 
             COALESCE(SUM(CASE WHEN realisasi IS NOT NULL THEN realisasi ELSE 0 END), 0) as total_realisasi,
             COUNT(CASE WHEN realisasi IS NOT NULL AND target > 0
                        AND (CAST(realisasi AS REAL)/target*100) >= {threshold} THEN 1 END) as jumlah_tercapai,
-            COUNT(CASE WHEN realisasi IS NOT NULL AND target > 0
-                       AND (CAST(realisasi AS REAL)/target*100) < {threshold} THEN 1 END) as jumlah_tidak_tercapai,
-            COUNT(CASE WHEN realisasi IS NULL AND target > 0 THEN 1 END) as jumlah_belum_diisi,
-            COUNT(CASE WHEN target IS NULL OR target <= 0 OR nama_pic IS NULL OR pekerjaan IS NULL THEN 1 END) as jumlah_tidak_lengkap
+            COUNT(CASE WHEN NOT (realisasi IS NOT NULL AND target > 0
+                       AND (CAST(realisasi AS REAL)/target*100) >= {threshold}) THEN 1 END) as jumlah_tidak_tercapai
         FROM progress {where}
     """
     row = execute_query(query, tuple(params), fetch='one')
@@ -340,8 +338,6 @@ def get_dashboard_stats(tahun: int = None, meja: str = None, tanggal_mulai: str 
         'persentase_keseluruhan': pct,
         'jumlah_tercapai': row['jumlah_tercapai'],
         'jumlah_tidak_tercapai': row['jumlah_tidak_tercapai'],
-        'jumlah_belum_diisi': row['jumlah_belum_diisi'],
-        'jumlah_tidak_lengkap': row['jumlah_tidak_lengkap'],
     }
 
 
@@ -353,12 +349,10 @@ def get_dashboard_status_counts(**filters) -> Dict[str, int]:
     row = execute_query(f"""
         SELECT
           COUNT(CASE WHEN realisasi IS NOT NULL AND target > 0 AND realisasi / target * 100 >= ? THEN 1 END) AS selesai,
-          COUNT(CASE WHEN realisasi IS NOT NULL AND target > 0 AND realisasi / target * 100 < ? THEN 1 END) AS proses,
-          COUNT(CASE WHEN realisasi IS NULL AND target > 0 THEN 1 END) AS belum_diisi,
-          COUNT(CASE WHEN target IS NULL OR target <= 0 OR nama_pic IS NULL OR pekerjaan IS NULL THEN 1 END) AS tidak_lengkap
+          COUNT(CASE WHEN NOT (realisasi IS NOT NULL AND target > 0 AND realisasi / target * 100 >= ?) THEN 1 END) AS proses
         FROM progress {where}
     """, (threshold, threshold, *params), fetch='one')
-    return {key: int(row[key] or 0) for key in ('selesai', 'proses', 'belum_diisi', 'tidak_lengkap')}
+    return {'selesai': int(row['selesai'] or 0), 'proses': int(row['proses'] or 0)}
 
 
 def get_dashboard_period_data(period: str = 'monthly', **filters) -> List[Dict[str, Any]]:
@@ -614,9 +608,9 @@ def _row_to_progress(row) -> Progress:
 def hitung_status(realisasi, target, threshold_pct: float) -> str:
     """Fungsi utilitas hitung status pencapaian."""
     if realisasi is None:
-        return STATUS_BELUM_DIISI
+        return STATUS_TIDAK_TERCAPAI
     if target is None or target <= 0:
-        return STATUS_DATA_TIDAK_LENGKAP
+        return STATUS_TIDAK_TERCAPAI
     pct = (realisasi / target) * 100
     return STATUS_TERCAPAI if pct >= threshold_pct else STATUS_TIDAK_TERCAPAI
 

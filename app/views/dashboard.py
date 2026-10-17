@@ -25,7 +25,7 @@ class DashboardView:
                 ft.Container(margin=ft.margin.only(top=24), padding=24, bgcolor='white', border_radius=16,
                     content=ft.Column([
                         ft.Text('Status pekerjaan', size=20, weight=ft.FontWeight.BOLD),
-                        ft.Text(f"{stats.get('jumlah_tercapai', 0)} tercapai | {stats.get('jumlah_tidak_tercapai', 0)} belum mencapai batas | {stats.get('jumlah_belum_diisi', 0)} belum diisi", color=COLORS['text_secondary']),
+                        ft.Text(f"{stats.get('jumlah_tercapai', 0)} tercapai | {stats.get('jumlah_tidak_tercapai', 0)} belum mencapai batas (termasuk data tidak lengkap)", color=COLORS['text_secondary']),
                         ft.ProgressBar(value=min(stats.get('persentase_keseluruhan', 0) / 100, 1), color=COLORS['success'], bgcolor=COLORS['surface_dark']),
                     ])),
             ]))

@@ -43,30 +43,26 @@ class Progress:
         from app.services.progress_service import get_threshold_pct
         threshold = get_threshold_pct()
 
-        if not self.nama_pic or not self.pekerjaan:
-            return "DATA TIDAK LENGKAP"
-        if self.realisasi is None:
-            return "BELUM DIISI"
+        if not self.nama_pic or not self.pekerjaan or self.realisasi is None:
+            return "TIDAK TERCAPAI"
         if self.target is None or self.target <= 0:
-            return "DATA TIDAK LENGKAP"
+            return "TIDAK TERCAPAI"
         pct = self.progress_pct
         if pct is None:
-            return "DATA TIDAK LENGKAP"
+            return "TIDAK TERCAPAI"
         if pct >= threshold:
             return "TERCAPAI"
         return "TIDAK TERCAPAI"
 
     def get_status_with_threshold(self, threshold_pct: float) -> str:
         """Status dengan threshold yang bisa dikustomisasi (dalam %)."""
-        if not self.nama_pic or not self.pekerjaan:
-            return "DATA TIDAK LENGKAP"
-        if self.realisasi is None:
-            return "BELUM DIISI"
-        if self.target is None or self.target == 0:
-            return "DATA TIDAK LENGKAP"
+        if not self.nama_pic or not self.pekerjaan or self.realisasi is None:
+            return "TIDAK TERCAPAI"
+        if self.target is None or self.target <= 0:
+            return "TIDAK TERCAPAI"
         pct = self.progress_pct
         if pct is None:
-            return "DATA TIDAK LENGKAP"
+            return "TIDAK TERCAPAI"
         if pct >= threshold_pct:
             return "TERCAPAI"
         return "TIDAK TERCAPAI"

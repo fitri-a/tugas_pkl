@@ -116,7 +116,6 @@ class AppShell:
             ('Pencapaian', service.format_persen(achievement), 'Realisasi dibagi target', COLORS['warning'], ft.icons.SPEED),
             ('Selesai', str(statuses.get('selesai', 0)), 'Memenuhi batas pencapaian', COLORS['success'], ft.icons.CHECK_CIRCLE_OUTLINE),
             ('Tidak tercapai', str(statuses.get('proses', 0)), 'Di bawah batas pencapaian', COLORS['danger'], ft.icons.PENDING_ACTIONS),
-            ('Tidak lengkap', str(statuses.get('tidak_lengkap', 0)), 'Target/data belum valid', COLORS['text_light'], ft.icons.ERROR_OUTLINE),
         ]
         return [
             ft.Row([self._kpi_card(*item, on_click=(lambda _, s='TERCAPAI': self._open_status_detail(s)) if item[0] == 'Selesai' else (lambda _, s='TIDAK TERCAPAI': self._open_status_detail(s)) if item[0] == 'Tidak tercapai' else None) for item in cards], wrap=True, spacing=12, run_spacing=12),
@@ -181,7 +180,7 @@ class AppShell:
         return ft.LineChart(data_series=[ft.LineChartData(data_points=points, stroke_width=3, color=COLORS['success'], curved=True, point=True)], min_y=0, max_y=max(100, max((p.y for p in points), default=100) * 1.1), height=250, interactive=True, tooltip_bgcolor=COLORS['primary_dark'], left_axis=ft.ChartAxis(labels_size=35), bottom_axis=ft.ChartAxis(labels=[ft.ChartAxisLabel(value=i, label=ft.Text(str(r['periode'])[-7:], size=10)) for i, r in enumerate(rows[-12:])], labels_size=30), horizontal_grid_lines=ft.ChartGridLines(color=COLORS['border'], width=1))
 
     def _status_chart(self, statuses):
-        values = [('Selesai', statuses.get('selesai', 0), COLORS['success']), ('Proses', statuses.get('proses', 0), COLORS['warning']), ('Belum diisi', statuses.get('belum_diisi', 0), COLORS['danger']), ('Tidak lengkap', statuses.get('tidak_lengkap', 0), COLORS['text_light'])]
+        values = [('Selesai', statuses.get('selesai', 0), COLORS['success']), ('Tidak tercapai', statuses.get('proses', 0), COLORS['danger'])]
         total = sum(v for _, v, _ in values)
         if not total:
             return self._empty_chart('Belum ada status pekerjaan.')
@@ -233,8 +232,7 @@ class AppShell:
         if not stats.get('total_entri'):
             return ft.Column([ft.Text('Insight pekerjaan', size=17, weight=ft.FontWeight.BOLD), ft.Text('Analisis belum dapat dibuat karena belum ada data pada filter aktif.', color=COLORS['text_secondary'])])
         highest_pic = pics[0]['nama_pic'] if pics else '-'
-        incomplete = statuses.get('belum_diisi', 0) + statuses.get('tidak_lengkap', 0)
-        return ft.Column([ft.Text('Insight pekerjaan', size=17, weight=ft.FontWeight.BOLD), ft.Text(f"• {stats['total_entri']} pekerjaan dianalisis pada periode/filter aktif."), ft.Text(f"• {statuses.get('selesai', 0)} pekerjaan memenuhi batas pencapaian; {statuses.get('proses', 0)} masih di bawah batas."), ft.Text(f"• PIC dengan jumlah catatan terbanyak pada filter ini: {highest_pic}. Ini menunjukkan volume catatan, bukan penilaian kinerja."), ft.Text(f"• {incomplete} pekerjaan perlu dilengkapi karena realisasi atau target belum tersedia.", color=COLORS['warning'] if incomplete else COLORS['text_secondary'])])
+        return ft.Column([ft.Text('Insight pekerjaan', size=17, weight=ft.FontWeight.BOLD), ft.Text(f"• {stats['total_entri']} pekerjaan dianalisis pada periode/filter aktif."), ft.Text(f"• {statuses.get('selesai', 0)} pekerjaan memenuhi batas pencapaian; {statuses.get('proses', 0)} belum memenuhi batas (termasuk data tidak lengkap)."), ft.Text(f"• PIC dengan jumlah catatan terbanyak pada filter ini: {highest_pic}. Ini menunjukkan volume catatan, bukan penilaian kinerja.")])
 
     def _period_label(self, period):
         return {'daily': 'Harian', 'weekly': 'Mingguan', 'monthly': 'Bulanan', 'yearly': 'Tahunan'}.get(period, 'Bulanan')
