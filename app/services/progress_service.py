@@ -121,6 +121,16 @@ def _split_pic(nama_pic: str) -> List[str]:
     return [n.strip() for n in nama_pic.replace('&', ',').split(',') if n.strip()]
 
 
+def _validate_new_progress_pic(nama_pic: str):
+    """Memastikan PIC pada pencatatan baru masih aktif."""
+    for nama in _split_pic(nama_pic):
+        row = execute_query("SELECT aktif FROM pic WHERE nama=? COLLATE NOCASE", (nama,), fetch='one')
+        if not row:
+            raise ValueError(f"PIC '{nama}' belum terdaftar. Pilih PIC aktif dari daftar.")
+        if not row['aktif']:
+            raise ValueError(f"PIC '{nama}' berstatus Nonaktif dan tidak dapat dipilih untuk pekerjaan baru.")
+
+
 # ============================================================
 # PROGRESS CRUD
 # ============================================================
@@ -128,6 +138,7 @@ def _split_pic(nama_pic: str) -> List[str]:
 def add_progress(p: Progress) -> int:
     """Menambah data progress baru. Return ID."""
     _validate_progress(p)
+    _validate_new_progress_pic(p.nama_pic)
     return execute_query(
         """INSERT INTO progress
            (tanggal, meja, nama_pic, pekerjaan, rincian_pengerjaan, target, realisasi, keterangan, imported_from)
@@ -528,6 +539,59 @@ def get_rekap_bulanan(tahun: int, bulan: int, meja: str = None) -> List[Dict]:
                            if d['total_target'] > 0 else 0)
         result.append(d)
     return result
+
+
+def get_report_detail(tanggal_mulai: str, tanggal_selesai: str,
+                      meja: str = None, nama_pic: str = None,
+                      pekerjaan: str = None) -> Dict[str, Any]:
+    """Mengambil seluruh baris laporan beserta ringkasannya."""
+    conditions = ["tanggal >= ?", "tanggal <= ?"]
+    params = [tanggal_mulai, tanggal_selesai]
+    if meja:
+        conditions.append("meja = ?")
+        params.append(meja)
+    if nama_pic:
+        conditions.append("nama_pic LIKE ?")
+        params.append(f"%{nama_pic}%")
+    if pekerjaan:
+        conditions.append("pekerjaan LIKE ?")
+        params.append(f"%{pekerjaan}%")
+
+    rows = execute_query(
+        f"SELECT * FROM progress WHERE {' AND '.join(conditions)} ORDER BY tanggal, meja, id",
+        tuple(params), fetch='all'
+    ) or []
+    threshold = get_threshold_pct()
+    details = []
+    total_target = 0.0
+    total_realisasi = 0.0
+    tercapai = 0
+    for number, row in enumerate(rows, 1):
+        item = dict(row)
+        target = item.get('target')
+        realisasi = item.get('realisasi')
+        valid = target is not None and target > 0 and realisasi is not None
+        percentage = (realisasi / target * 100) if valid else None
+        status = hitung_status(realisasi, target, threshold)
+        item.update(no=number, persentase=percentage, status=status)
+        details.append(item)
+        if valid:
+            total_target += target
+            total_realisasi += realisasi
+        if status == STATUS_TERCAPAI:
+            tercapai += 1
+    total = len(details)
+    return {
+        'rows': details,
+        'summary': {
+            'jumlah': total,
+            'total_target': total_target,
+            'total_realisasi': total_realisasi,
+            'persentase': total_realisasi / total_target * 100 if total_target > 0 else None,
+            'tercapai': tercapai,
+            'tidak_tercapai': total - tercapai,
+        },
+    }
 
 
 def get_perbandingan_meja(tahun: int) -> Dict[str, Any]:

@@ -1,4 +1,5 @@
 import pytest
+from app.services import progress_service
 from app.services.progress_service import hitung_status, format_angka, format_persen, format_tanggal
 from app.config import STATUS_TERCAPAI, STATUS_TIDAK_TERCAPAI, STATUS_BELUM_DIISI, STATUS_DATA_TIDAK_LENGKAP
 
@@ -21,3 +22,20 @@ def test_format_indonesia():
 def test_format_tanggal_tampilan():
     assert format_tanggal('2026-10-14') == '14/10/2026'
     assert format_tanggal('tanggal-lama') == 'tanggal-lama'
+
+
+def test_pic_nonaktif_ditolak_untuk_progress_baru(monkeypatch):
+    monkeypatch.setattr(progress_service, 'execute_query', lambda *args, **kwargs: {'aktif': 0})
+    with pytest.raises(ValueError, match='Nonaktif'):
+        progress_service._validate_new_progress_pic('PIC Lama')
+
+
+def test_pic_aktif_diizinkan_untuk_progress_baru(monkeypatch):
+    monkeypatch.setattr(progress_service, 'execute_query', lambda *args, **kwargs: {'aktif': 1})
+    progress_service._validate_new_progress_pic('PIC Aktif')
+
+
+def test_pic_belum_terdaftar_ditolak_untuk_progress_baru(monkeypatch):
+    monkeypatch.setattr(progress_service, 'execute_query', lambda *args, **kwargs: None)
+    with pytest.raises(ValueError, match='belum terdaftar'):
+        progress_service._validate_new_progress_pic('PIC Baru')

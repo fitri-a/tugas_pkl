@@ -60,47 +60,31 @@ class AppShell:
 
     def dashboard(self):
         settings = service.get_settings()
-        start = self.date_picker('Mulai', width=145, default_today=False)
-        end = self.date_picker('Selesai', width=145, default_today=False)
         tahun = ft.Dropdown(label='Tahun', width=145, value='Semua', options=[ft.dropdown.Option('Semua'), *[ft.dropdown.Option(str(y)) for y in service.get_distinct_tahun()]])
-        meja = ft.Dropdown(label='Meja', width=145, value='Semua', options=[ft.dropdown.Option('Semua'), *[ft.dropdown.Option(x) for x in MEJA_OPTIONS]])
-        pic = ft.Dropdown(label='PIC', width=175, value='Semua', options=[ft.dropdown.Option('Semua'), *[ft.dropdown.Option(x) for x in service.get_pic_names(aktif_only=False)]])
-        pekerjaan = ft.Dropdown(label='Pekerjaan', width=230, value='Semua', options=[ft.dropdown.Option('Semua'), *[ft.dropdown.Option(x) for x in service.get_distinct_pekerjaan()]])
         period = ft.Dropdown(label='Periode grafik', width=155, value='monthly', options=[ft.dropdown.Option('daily', 'Harian'), ft.dropdown.Option('weekly', 'Mingguan'), ft.dropdown.Option('monthly', 'Bulanan'), ft.dropdown.Option('yearly', 'Tahunan')])
         content = ft.Column(spacing=18, scroll=ft.ScrollMode.AUTO, expand=True)
 
         def current_filters():
-            return {
-                'tahun': None if tahun.value == 'Semua' else int(tahun.value),
-                'tanggal_mulai': start.data['iso'], 'tanggal_selesai': end.data['iso'],
-                'meja': None if meja.value == 'Semua' else meja.value,
-                'nama_pic': None if pic.value == 'Semua' else pic.value,
-                'pekerjaan': None if pekerjaan.value == 'Semua' else pekerjaan.value,
-            }
+            return {'tahun': None if tahun.value == 'Semua' else int(tahun.value)}
 
         def load(_=None):
-            if start.data['iso'] and end.data['iso'] and start.data['iso'] > end.data['iso']:
-                self.toast('Tanggal mulai tidak boleh setelah tanggal selesai.', error=True)
-                return
             filters = current_filters()
             self.detail_filters = dict(filters)
             stats = service.get_dashboard_stats(**filters)
             statuses = service.get_dashboard_status_counts(**filters)
             periods = service.get_dashboard_period_data(period.value, **filters)
             pics = service.get_dashboard_pic_data(**filters)
-            latest = service.get_progress(tahun=filters['tahun'], tanggal_mulai=filters['tanggal_mulai'], tanggal_selesai=filters['tanggal_selesai'], meja=filters['meja'], nama_pic=filters['nama_pic'], pekerjaan=filters['pekerjaan'], limit=settings.rows_per_page)
+            latest = service.get_progress(tahun=filters['tahun'], limit=settings.rows_per_page)
             content.controls = self._dashboard_content(stats, statuses, periods, pics, latest, period.value, filters, load)
             self.page.update()
 
         def reset(_):
-            start.data['iso'] = None; start.value = ''
-            end.data['iso'] = None; end.value = ''
-            tahun.value = 'Semua'; meja.value = 'Semua'; pic.value = 'Semua'; pekerjaan.value = 'Semua'; period.value = 'monthly'
+            tahun.value = 'Semua'; period.value = 'monthly'
             load()
 
         filter_panel = self._panel(ft.Column([
             ft.Row([ft.Icon(ft.icons.FILTER_ALT_OUTLINED, color=COLORS['primary_light']), ft.Text('Filter analisis', size=16, weight=ft.FontWeight.BOLD), ft.Container(expand=True), ft.TextButton('Reset filter', icon=ft.icons.REFRESH, on_click=reset)], alignment=ft.MainAxisAlignment.START),
-            ft.Row([tahun, start, end, meja, pic, pekerjaan, period, ft.ElevatedButton('Terapkan', icon=ft.icons.TUNE, on_click=load)], wrap=True, spacing=10),
+            ft.Row([tahun, period, ft.ElevatedButton('Terapkan', icon=ft.icons.TUNE, on_click=load)], wrap=True, spacing=10),
         ]))
         load()
         return ft.Column([self.title('Dashboard', 'Analisis pencapaian Progress PLSCS Meja A & B'), filter_panel, content], spacing=10, scroll=ft.ScrollMode.AUTO, expand=True)
@@ -280,7 +264,10 @@ class AppShell:
         existing = service.get_progress_by_id(self.editing_id) if self.editing_id else None
         tanggal = self.date_picker('Tanggal', existing.tanggal if existing else None)
         meja = ft.Dropdown(label='Meja kerja', width=150, options=[ft.dropdown.Option(x) for x in MEJA_OPTIONS], value=existing.meja if existing else MEJA_OPTIONS[0])
-        pic = ft.TextField(label='Nama PIC', value=existing.nama_pic if existing else '', width=230)
+        pic_options = service.get_pic_names(aktif_only=True)
+        if existing and existing.nama_pic and existing.nama_pic not in pic_options:
+            pic_options.insert(0, existing.nama_pic)
+        pic = ft.Dropdown(label='Nama PIC', value=existing.nama_pic if existing else None, width=230, options=[ft.dropdown.Option(value) for value in pic_options])
         pekerjaan_options = list(PEKERJAAN_OPTIONS)
         if existing and existing.pekerjaan and existing.pekerjaan not in pekerjaan_options:
             pekerjaan_options.insert(0, existing.pekerjaan)
@@ -297,7 +284,7 @@ class AppShell:
 
         def save(e):
             try:
-                p = Progress(tanggal=tanggal.data['iso'], meja=meja.value, nama_pic=pic.value.strip(), pekerjaan=(pekerjaan.value or '').strip(), rincian_pengerjaan=rincian.value.strip(), target=parse_num(target.value), realisasi=parse_num(realisasi.value), keterangan=keterangan.value.strip())
+                p = Progress(tanggal=tanggal.data['iso'], meja=meja.value, nama_pic=(pic.value or '').strip(), pekerjaan=(pekerjaan.value or '').strip(), rincian_pengerjaan=rincian.value.strip(), target=parse_num(target.value), realisasi=parse_num(realisasi.value), keterangan=keterangan.value.strip())
                 if service.check_duplicate(p.tanggal, p.meja, p.nama_pic, p.pekerjaan, exclude_id=self.editing_id):
                     self.toast('Peringatan: data dengan kombinasi yang sama sudah ada.')
                     return
@@ -315,7 +302,8 @@ class AppShell:
                 self.toast(str(ex), error=True)
 
         def reset(e):
-            for field in [pic, rincian, target, realisasi, keterangan]: field.value = ''
+            for field in [rincian, target, realisasi, keterangan]: field.value = ''
+            pic.value = None
             pekerjaan.value = None
             tanggal.data['iso'] = date.today().isoformat()
             tanggal.value = date.today().strftime('%d/%m/%Y')
@@ -325,7 +313,6 @@ class AppShell:
         return ft.Column([self.title('Edit Progress' if existing else 'Input Progress Harian', 'Catat pekerjaan dan hasil aktual ke database lokal'), ft.Row([tanggal, meja, pic]), ft.Row([pekerjaan]), rincian, ft.Row([target, realisasi]), keterangan, ft.Row([ft.ElevatedButton('Simpan', on_click=save), ft.OutlinedButton('Reset Form', on_click=reset), ft.TextButton('Batal', on_click=lambda _: (setattr(self, 'editing_id', None), self.render('Data Progress')))])], scroll=ft.ScrollMode.AUTO)
 
     def data_progress(self):
-        search = ft.TextField(label='Cari pekerjaan, PIC, rincian...', expand=True)
         tanggal_mulai = self.date_picker('Tanggal mulai', width=170, default_today=False)
         tanggal_selesai = self.date_picker('Tanggal selesai', width=170, default_today=False)
         initial_year = self.detail_filters.get('tahun')
@@ -341,7 +328,7 @@ class AppShell:
         count_label = ft.Text('', color=COLORS['text_secondary'])
 
         def load(e=None):
-            data = service.get_progress(tahun=None if tahun.value == 'Semua' else int(tahun.value), status=self.detail_status, tanggal_mulai=tanggal_mulai.data['iso'], tanggal_selesai=tanggal_selesai.data['iso'], meja=None if meja.value == 'Semua' else meja.value, keyword=search.value.strip() or None)
+            data = service.get_progress(tahun=None if tahun.value == 'Semua' else int(tahun.value), status=self.detail_status, tanggal_mulai=tanggal_mulai.data['iso'], tanggal_selesai=tanggal_selesai.data['iso'], meja=None if meja.value == 'Semua' else meja.value)
             count_label.value = f'{len(data)} data ditemukan'
             table.rows = [ft.DataRow(cells=[ft.DataCell(ft.Text(service.format_tanggal(p.tanggal))), ft.DataCell(ft.Text(p.meja)), ft.DataCell(ft.Text(p.nama_pic)), ft.DataCell(ft.Text(p.pekerjaan, max_lines=2)), ft.DataCell(ft.Text(service.format_angka(p.target))), ft.DataCell(ft.Text(service.format_angka(p.realisasi))), ft.DataCell(ft.Text(service.format_persen(p.progress_pct))), ft.DataCell(ft.Text(p.status)), ft.DataCell(ft.Row([ft.IconButton(ft.icons.EDIT_OUTLINED, tooltip='Edit', on_click=lambda _, pid=p.id: edit(pid)), ft.IconButton(ft.icons.DELETE_OUTLINE, tooltip='Hapus', on_click=lambda _, pid=p.id: delete(pid))]))]) for p in data]
             self.page.update()
@@ -360,45 +347,79 @@ class AppShell:
             self.page.dialog.open = True
             self.page.update()
 
-        search.on_submit = load
         meja.on_change = load; tahun.on_change = load
         load()
         label = f"Data Progress{(' - ' + self.detail_status) if self.detail_status else ''}"
-        return ft.Column([self.title(label, 'Pencarian dan pemantauan seluruh catatan'), ft.Row([tahun, tanggal_mulai, tanggal_selesai]), ft.Row([search, meja, ft.ElevatedButton('Cari', on_click=load), ft.OutlinedButton('Refresh', icon=ft.icons.REFRESH, on_click=load), ft.TextButton('Kembali Dashboard', on_click=lambda _: self.render('Dashboard'))]), count_label, ft.Container(content=table, bgcolor='white', padding=10)], scroll=ft.ScrollMode.AUTO, expand=True)
+        return ft.Column([self.title(label, 'Pemantauan seluruh catatan'), ft.Row([tahun, tanggal_mulai, tanggal_selesai]), ft.Row([meja, ft.ElevatedButton('Cari', on_click=load), ft.OutlinedButton('Refresh', icon=ft.icons.REFRESH, on_click=load), ft.TextButton('Kembali Dashboard', on_click=lambda _: self.render('Dashboard'))]), count_label, ft.Container(content=table, bgcolor='white', padding=10)], scroll=ft.ScrollMode.AUTO, expand=True)
+
+    def _report_meja_filter(self):
+        meja = ft.Dropdown(label='Meja', width=145, value='Semua', options=[ft.dropdown.Option('Semua'), *[ft.dropdown.Option(x) for x in MEJA_OPTIONS]])
+        return meja
+
+    def _report_view(self, result, empty_text='Tidak ada data pekerjaan pada periode dan filter yang dipilih.'):
+        summary = result['summary']
+        cards = ft.Row([
+            self.card('Jumlah pekerjaan', str(summary['jumlah']), COLORS['primary_light']),
+            self.card('Total target', service.format_angka(summary['total_target']), COLORS['info']),
+            self.card('Total realisasi', service.format_angka(summary['total_realisasi']), COLORS['success']),
+            self.card('Pencapaian', service.format_persen(summary['persentase']), COLORS['warning']),
+            self.card('Tercapai', str(summary['tercapai']), COLORS['success']),
+            self.card('Tidak tercapai', str(summary['tidak_tercapai']), COLORS['danger']),
+        ], wrap=True, spacing=10)
+        columns = ['No.', 'Tanggal', 'Meja', 'Nama PIC', 'Pekerjaan', 'Rincian Pengerjaan', 'Target', 'Realisasi', 'Persentase Pencapaian', 'Status', 'Keterangan']
+        table = ft.DataTable(columns=[ft.DataColumn(ft.Text(column)) for column in columns], rows=[])
+        for row in result['rows']:
+            values = [row['no'], service.format_tanggal(row['tanggal']), row['meja'], row['nama_pic'], row['pekerjaan'], row['rincian_pengerjaan'] or '-', service.format_angka(row['target']), service.format_angka(row['realisasi']), service.format_persen(row['persentase']), row['status'], row['keterangan'] or '-']
+            table.rows.append(ft.DataRow(cells=[ft.DataCell(ft.Text(str(value), selectable=True)) for value in values]))
+        body = ft.Column([cards, ft.Text(f"{len(result['rows'])} data ditemukan"), ft.Container(content=table, bgcolor='white', padding=10, border_radius=8, clip_behavior=ft.ClipBehavior.HARD_EDGE)] if result['rows'] else [ft.Text(empty_text, color=COLORS['text_secondary'])], scroll=ft.ScrollMode.ALWAYS)
+        return body
 
     def daily_report(self):
         tanggal = self.date_picker('Tanggal')
-        meja = ft.Dropdown(label='Meja', width=150, options=[ft.dropdown.Option('Semua'), *[ft.dropdown.Option(x) for x in MEJA_OPTIONS]], value='Semua')
+        meja = self._report_meja_filter()
         result = ft.Column()
         def load(e=None):
-            rows = service.get_rekap_harian(tanggal.data['iso'], None if meja.value == 'Semua' else meja.value)
-            result.controls = [ft.Text(f"{len(rows)} catatan pada {tanggal.value}"), *[ft.Text(f"{r['meja']} | {r['nama_pic']} | {r['pekerjaan']} | target {service.format_angka(r['target'])} | realisasi {service.format_angka(r['realisasi'])}") for r in rows]]
+            data = service.get_report_detail(tanggal.data['iso'], tanggal.data['iso'], meja=None if meja.value == 'Semua' else meja.value)
+            result.controls = [self._report_view(data)]
             self.page.update()
-        return ft.Column([self.title('Laporan Harian'), ft.Row([tanggal, meja, ft.ElevatedButton('Tampilkan', on_click=load)]), result], scroll=ft.ScrollMode.AUTO)
+        def reset(e):
+            tanggal.data['iso'] = date.today().isoformat(); tanggal.value = date.today().strftime('%d/%m/%Y'); meja.value = 'Semua'; load()
+        return ft.Column([self.title('Laporan Harian', 'Seluruh rincian pekerjaan pada satu tanggal'), ft.Row([tanggal, meja, ft.ElevatedButton('Tampilkan', on_click=load), ft.OutlinedButton('Reset', on_click=reset)], wrap=True), result], scroll=ft.ScrollMode.AUTO, expand=True)
 
     def weekly_report(self):
-        start = self.date_picker('Mulai')
-        end = self.date_picker('Selesai')
-        output = ft.Column()
-        def load(e):
+        settings = service.get_settings()
+        years = sorted(set(service.get_distinct_tahun() + [date.today().year, date.today().year + 1]), reverse=True)
+        year = ft.Dropdown(label='Tahun', width=120, value=str(settings.report_year), options=[ft.dropdown.Option(str(value)) for value in years])
+        week = ft.Dropdown(label='Minggu ISO', width=140, value=str(date.today().isocalendar().week), options=[ft.dropdown.Option(str(value)) for value in range(1, 54)])
+        meja = self._report_meja_filter()
+        result = ft.Column()
+        def load(e=None):
             try:
-                if start.data['iso'] > end.data['iso']:
-                    raise ValueError('Tanggal mulai tidak boleh setelah tanggal selesai.')
-                rows = service.get_rekap_mingguan(start.data['iso'], end.data['iso'])
-                output.controls = [ft.Text(f"{r['meja']} | {r['pekerjaan']} | target {service.format_angka(r['total_target'])} | realisasi {service.format_angka(r['total_realisasi'])} | {service.format_persen(r['total_realisasi'] / r['total_target'] * 100 if r['total_target'] else 0)}") for r in rows]
+                start = date.fromisocalendar(int(year.value), int(week.value), 1)
+                end = start + timedelta(days=6)
+                data = service.get_report_detail(start.isoformat(), end.isoformat(), meja=None if meja.value == 'Semua' else meja.value)
+                result.controls = [ft.Text(f"Periode {service.format_tanggal(start.isoformat())} s.d. {service.format_tanggal(end.isoformat())}"), self._report_view(data)]
                 self.page.update()
-            except Exception as ex: self.toast(str(ex), error=True)
-        return ft.Column([self.title('Laporan Mingguan'), ft.Row([start, end, ft.ElevatedButton('Tampilkan', on_click=load)]), output], scroll=ft.ScrollMode.AUTO)
+            except ValueError as ex: self.toast(f'Minggu tidak valid untuk tahun tersebut: {ex}', error=True)
+        def reset(e):
+            year.value = str(settings.report_year); week.value = '1'; meja.value = 'Semua'; load()
+        return ft.Column([self.title('Laporan Mingguan', 'Seluruh rincian berdasarkan minggu ISO'), ft.Row([year, week, meja, ft.ElevatedButton('Tampilkan', on_click=load), ft.OutlinedButton('Reset', on_click=reset)], wrap=True), result], scroll=ft.ScrollMode.AUTO, expand=True)
 
     def monthly_report(self):
-        year = ft.TextField(label='Tahun', value=str(service.get_settings().report_year), width=120)
-        month = ft.Dropdown(label='Bulan', width=160, value='1', options=[ft.dropdown.Option(str(i), text=service.NAMA_BULAN[i]) for i in range(1, 13)])
-        output = ft.Column()
-        def load(e):
-            rows = service.get_rekap_bulanan(int(year.value), int(month.value))
-            output.controls = [ft.Text(f"{r['meja']} | {r['pekerjaan']} | target {service.format_angka(r['total_target'])} | realisasi {service.format_angka(r['total_realisasi'])} | {service.format_persen(r['persentase'])}") for r in rows]
+        settings = service.get_settings()
+        years = sorted(set(service.get_distinct_tahun() + [date.today().year, date.today().year + 1]), reverse=True)
+        year = ft.Dropdown(label='Tahun', width=120, value=str(settings.report_year), options=[ft.dropdown.Option(str(value)) for value in years])
+        month = ft.Dropdown(label='Bulan', width=160, value=str(date.today().month), options=[ft.dropdown.Option(str(i), text=service.NAMA_BULAN[i]) for i in range(1, 13)])
+        meja = self._report_meja_filter()
+        result = ft.Column()
+        def load(e=None):
+            selected = int(month.value); start = date(int(year.value), selected, 1); end = date(int(year.value) + (selected == 12), selected % 12 + 1, 1) - timedelta(days=1)
+            data = service.get_report_detail(start.isoformat(), end.isoformat(), meja=None if meja.value == 'Semua' else meja.value)
+            result.controls = [self._report_view(data)]
             self.page.update()
-        return ft.Column([self.title('Laporan Bulanan'), ft.Row([year, month, ft.ElevatedButton('Tampilkan', on_click=load)]), output], scroll=ft.ScrollMode.AUTO)
+        def reset(e):
+            year.value = str(settings.report_year); month.value = '1'; meja.value = 'Semua'; load()
+        return ft.Column([self.title('Laporan Bulanan', 'Seluruh rincian berdasarkan bulan dan tahun'), ft.Row([year, month, meja, ft.ElevatedButton('Tampilkan', on_click=load), ft.OutlinedButton('Reset', on_click=reset)], wrap=True), result], scroll=ft.ScrollMode.AUTO, expand=True)
 
     def pic_management(self):
         name = ft.TextField(label='Nama PIC', expand=True)
