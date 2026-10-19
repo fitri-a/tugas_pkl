@@ -150,18 +150,18 @@ class AppShell:
             return self._empty_chart('Belum ada data pada periode ini.')
         maximum = max(max(float(r['target'] or 0), float(r['realisasi'] or 0)) for r in rows) or 1
         groups = []
-        for i, row in enumerate(rows[-8:]):
+        for i, row in enumerate(rows):
             groups.append(ft.BarChartGroup(x=i, bar_rods=[ft.BarChartRod(from_y=0, to_y=float(row['target'] or 0), width=9, color=COLORS['primary_light'], tooltip=f"Target {service.format_angka(row['target'])}"), ft.BarChartRod(from_y=0, to_y=float(row['realisasi'] or 0), width=9, color=COLORS['success'], tooltip=f"Realisasi {service.format_angka(row['realisasi'])}")]))
-        return ft.BarChart(bar_groups=groups, max_y=maximum * 1.15, height=250, interactive=True, tooltip_bgcolor=COLORS['primary_dark'], bottom_axis=ft.ChartAxis(labels=[ft.ChartAxisLabel(value=i, label=ft.Text(str(r['periode'])[-7:], size=10)) for i, r in enumerate(rows[-8:])], labels_size=30), left_axis=ft.ChartAxis(labels_size=35), horizontal_grid_lines=ft.ChartGridLines(color=COLORS['border'], width=1))
+        return ft.BarChart(bar_groups=groups, max_y=maximum * 1.15, height=250, interactive=True, tooltip_bgcolor=COLORS['primary_dark'], bottom_axis=ft.ChartAxis(labels=[ft.ChartAxisLabel(value=i, label=ft.Text(str(r['periode']), size=10)) for i, r in enumerate(rows)], labels_size=30), left_axis=ft.ChartAxis(labels_size=35), horizontal_grid_lines=ft.ChartGridLines(color=COLORS['border'], width=1))
 
     def _line_chart(self, rows):
         if not rows:
             return self._empty_chart('Belum ada data tren.')
         points = []
-        for i, row in enumerate(rows[-12:]):
+        for i, row in enumerate(rows):
             target, realisasi = float(row['target'] or 0), float(row['realisasi'] or 0)
             points.append(ft.LineChartDataPoint(i, realisasi / target * 100 if target else 0))
-        return ft.LineChart(data_series=[ft.LineChartData(data_points=points, stroke_width=3, color=COLORS['success'], curved=True, point=True)], min_y=0, max_y=max(100, max((p.y for p in points), default=100) * 1.1), height=250, interactive=True, tooltip_bgcolor=COLORS['primary_dark'], left_axis=ft.ChartAxis(labels_size=35), bottom_axis=ft.ChartAxis(labels=[ft.ChartAxisLabel(value=i, label=ft.Text(str(r['periode'])[-7:], size=10)) for i, r in enumerate(rows[-12:])], labels_size=30), horizontal_grid_lines=ft.ChartGridLines(color=COLORS['border'], width=1))
+        return ft.LineChart(data_series=[ft.LineChartData(data_points=points, stroke_width=3, color=COLORS['success'], curved=True, point=True)], min_y=0, max_y=max(100, max((p.y for p in points), default=100) * 1.1), height=250, interactive=True, tooltip_bgcolor=COLORS['primary_dark'], left_axis=ft.ChartAxis(labels_size=35), bottom_axis=ft.ChartAxis(labels=[ft.ChartAxisLabel(value=i, label=ft.Text(str(r['periode']), size=10)) for i, r in enumerate(rows)], labels_size=30), horizontal_grid_lines=ft.ChartGridLines(color=COLORS['border'], width=1))
 
     def _status_chart(self, statuses):
         values = [('Selesai', statuses.get('selesai', 0), COLORS['success']), ('Tidak tercapai', statuses.get('proses', 0), COLORS['danger'])]
@@ -313,22 +313,14 @@ class AppShell:
         return ft.Column([self.title('Edit Progress' if existing else 'Input Progress Harian', 'Catat pekerjaan dan hasil aktual ke database lokal'), ft.Row([tanggal, meja, pic]), ft.Row([pekerjaan]), rincian, ft.Row([target, realisasi]), keterangan, ft.Row([ft.ElevatedButton('Simpan', on_click=save), ft.OutlinedButton('Reset Form', on_click=reset), ft.TextButton('Batal', on_click=lambda _: (setattr(self, 'editing_id', None), self.render('Data Progress')))])], scroll=ft.ScrollMode.AUTO)
 
     def data_progress(self):
-        tanggal_mulai = self.date_picker('Tanggal mulai', width=170, default_today=False)
-        tanggal_selesai = self.date_picker('Tanggal selesai', width=170, default_today=False)
         initial_year = self.detail_filters.get('tahun')
-        tahun = ft.Dropdown(label='Tahun', width=130, options=[ft.dropdown.Option('Semua'), *[ft.dropdown.Option(str(y)) for y in service.get_distinct_tahun()]], value=str(initial_year) if initial_year else 'Semua')
-        meja = ft.Dropdown(label='Meja', width=150, options=[ft.dropdown.Option('Semua'), *[ft.dropdown.Option(x) for x in MEJA_OPTIONS]], value=self.detail_filters.get('meja') or 'Semua')
-        if self.detail_filters.get('tanggal_mulai'):
-            tanggal_mulai.data['iso'] = self.detail_filters['tanggal_mulai']
-            tanggal_mulai.value = service.format_tanggal(self.detail_filters['tanggal_mulai'])
-        if self.detail_filters.get('tanggal_selesai'):
-            tanggal_selesai.data['iso'] = self.detail_filters['tanggal_selesai']
-            tanggal_selesai.value = service.format_tanggal(self.detail_filters['tanggal_selesai'])
+        tahun = ft.Dropdown(label='Tahun', width=170, options=[ft.dropdown.Option('Semua'), *[ft.dropdown.Option(str(y)) for y in service.get_distinct_tahun()]], value=str(initial_year) if initial_year else 'Semua')
+        meja = ft.Dropdown(label='Meja', width=170, options=[ft.dropdown.Option('Semua'), *[ft.dropdown.Option(x) for x in MEJA_OPTIONS]], value=self.detail_filters.get('meja') or 'Semua')
         table = ft.DataTable(columns=[ft.DataColumn(ft.Text(x)) for x in ['Tanggal', 'Meja', 'PIC', 'Pekerjaan', 'Target', 'Realisasi', 'Progress', 'Status', 'Aksi']], rows=[])
         count_label = ft.Text('', color=COLORS['text_secondary'])
 
         def load(e=None):
-            data = service.get_progress(tahun=None if tahun.value == 'Semua' else int(tahun.value), status=self.detail_status, tanggal_mulai=tanggal_mulai.data['iso'], tanggal_selesai=tanggal_selesai.data['iso'], meja=None if meja.value == 'Semua' else meja.value)
+            data = service.get_progress(tahun=None if tahun.value == 'Semua' else int(tahun.value), status=self.detail_status, meja=None if meja.value == 'Semua' else meja.value)
             count_label.value = f'{len(data)} data ditemukan'
             table.rows = [ft.DataRow(cells=[ft.DataCell(ft.Text(service.format_tanggal(p.tanggal))), ft.DataCell(ft.Text(p.meja)), ft.DataCell(ft.Text(p.nama_pic)), ft.DataCell(ft.Text(p.pekerjaan, max_lines=2)), ft.DataCell(ft.Text(service.format_angka(p.target))), ft.DataCell(ft.Text(service.format_angka(p.realisasi))), ft.DataCell(ft.Text(service.format_persen(p.progress_pct))), ft.DataCell(ft.Text(p.status)), ft.DataCell(ft.Row([ft.IconButton(ft.icons.EDIT_OUTLINED, tooltip='Edit', on_click=lambda _, pid=p.id: edit(pid)), ft.IconButton(ft.icons.DELETE_OUTLINE, tooltip='Hapus', on_click=lambda _, pid=p.id: delete(pid))]))]) for p in data]
             self.page.update()
@@ -347,10 +339,12 @@ class AppShell:
             self.page.dialog.open = True
             self.page.update()
 
-        meja.on_change = load; tahun.on_change = load
+        meja.on_change = load
+        tahun.on_change = load
         load()
         label = f"Data Progress{(' - ' + self.detail_status) if self.detail_status else ''}"
-        return ft.Column([self.title(label, 'Pemantauan seluruh catatan'), ft.Row([tahun, tanggal_mulai, tanggal_selesai]), ft.Row([meja, ft.ElevatedButton('Cari', on_click=load), ft.OutlinedButton('Refresh', icon=ft.icons.REFRESH, on_click=load), ft.TextButton('Kembali Dashboard', on_click=lambda _: self.render('Dashboard'))]), count_label, ft.Container(content=table, bgcolor='white', padding=10)], scroll=ft.ScrollMode.AUTO, expand=True)
+        filter_controls = ft.Row([tahun, meja, ft.ElevatedButton('Cari', icon=ft.icons.SEARCH, on_click=load), ft.OutlinedButton('Refresh', icon=ft.icons.REFRESH, on_click=load), ft.TextButton('Kembali Dashboard', on_click=lambda _: self.render('Dashboard'))], spacing=12, wrap=True, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+        return ft.Column([self.title(label, 'Pemantauan seluruh catatan'), ft.Container(content=filter_controls, padding=ft.padding.only(top=8, bottom=4)), count_label, ft.Container(content=table, bgcolor='white', padding=10)], scroll=ft.ScrollMode.AUTO, expand=True)
 
     def _report_meja_filter(self):
         meja = ft.Dropdown(label='Meja', width=145, value='Semua', options=[ft.dropdown.Option('Semua'), *[ft.dropdown.Option(x) for x in MEJA_OPTIONS]])

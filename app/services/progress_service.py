@@ -369,13 +369,14 @@ def get_dashboard_status_counts(**filters) -> Dict[str, int]:
 def get_dashboard_period_data(period: str = 'monthly', **filters) -> List[Dict[str, Any]]:
     """Agregasi target/realisasi untuk grafik dashboard."""
     expressions = {
-        'daily': ("tanggal", "tanggal"),
-        'weekly': ("strftime('%Y-W%W', tanggal)", "strftime('%Y-W%W', tanggal)"),
-        'monthly': ("strftime('%Y-%m', tanggal)", "strftime('%Y-%m', tanggal)"),
-        'yearly': ("strftime('%Y', tanggal)", "strftime('%Y', tanggal)"),
+        'daily': ("date(tanggal)", "date(tanggal)"),
+        'weekly': ("strftime('%Y-W%W', date(tanggal))", "strftime('%Y-W%W', date(tanggal))"),
+        'monthly': ("strftime('%Y-%m', date(tanggal))", "strftime('%Y-%m', date(tanggal))"),
+        'yearly': ("strftime('%Y', date(tanggal))", "strftime('%Y', date(tanggal))"),
     }
     expression, label_expression = expressions.get(period, expressions['monthly'])
     conditions, params = _dashboard_conditions(filters)
+    conditions.insert(0, "tanggal IS NOT NULL AND date(tanggal) IS NOT NULL")
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     rows = execute_query(f"""
         SELECT {label_expression} AS periode, COALESCE(SUM(target), 0) AS target,
