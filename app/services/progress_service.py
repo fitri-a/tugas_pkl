@@ -122,12 +122,10 @@ def _split_pic(nama_pic: str) -> List[str]:
 
 
 def _validate_new_progress_pic(nama_pic: str):
-    """Memastikan PIC pada pencatatan baru masih aktif."""
+    """Memastikan PIC nonaktif tidak digunakan; nama baru boleh diketik manual."""
     for nama in _split_pic(nama_pic):
         row = execute_query("SELECT aktif FROM pic WHERE nama=? COLLATE NOCASE", (nama,), fetch='one')
-        if not row:
-            raise ValueError(f"PIC '{nama}' belum terdaftar. Pilih PIC aktif dari daftar.")
-        if not row['aktif']:
+        if row and not row['aktif']:
             raise ValueError(f"PIC '{nama}' berstatus Nonaktif dan tidak dapat dipilih untuk pekerjaan baru.")
 
 

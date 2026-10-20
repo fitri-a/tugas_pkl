@@ -35,10 +35,9 @@ def test_pic_aktif_diizinkan_untuk_progress_baru(monkeypatch):
     progress_service._validate_new_progress_pic('PIC Aktif')
 
 
-def test_pic_belum_terdaftar_ditolak_untuk_progress_baru(monkeypatch):
+def test_pic_belum_terdaftar_diizinkan_untuk_input_manual(monkeypatch):
     monkeypatch.setattr(progress_service, 'execute_query', lambda *args, **kwargs: None)
-    with pytest.raises(ValueError, match='belum terdaftar'):
-        progress_service._validate_new_progress_pic('PIC Baru')
+    progress_service._validate_new_progress_pic('PIC Baru')
 
 def test_dashboard_period_data_mencakup_seluruh_tahun_dan_mengabaikan_tanggal_invalid(monkeypatch):
     import sqlite3
@@ -84,3 +83,19 @@ def test_dashboard_period_data_mencakup_seluruh_tahun_dan_mengabaikan_tanggal_in
 
     yearly = progress_service.get_dashboard_period_data('yearly')
     assert [row['periode'] for row in yearly] == ['2025', '2026', '2027']
+
+    # Data baru ikut terbaca tanpa perubahan query atau batas jumlah periode.
+    conn.execute(
+        'INSERT INTO progress (tanggal, meja, target, realisasi) VALUES (?, ?, ?, ?)',
+        ('2028-01-15', 'Meja B', 600, 540),
+    )
+    conn.execute(
+        'INSERT INTO progress (tanggal, meja, target, realisasi) VALUES (?, ?, ?, ?)',
+        ('2026-03-20', 'Meja B', 100, 50),
+    )
+    conn.commit()
+    rows = progress_service.get_dashboard_period_data('monthly')
+    assert [row['periode'] for row in rows][-2:] == ['2027-02', '2028-01']
+    march_2026 = next(row for row in rows if row['periode'] == '2026-03')
+    assert march_2026['target'] == 400
+    assert march_2026['realisasi'] == 300

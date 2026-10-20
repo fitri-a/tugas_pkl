@@ -30,7 +30,7 @@ class AppShell:
             ft.Text('PLSCS', size=28, weight=ft.FontWeight.BOLD, color='white'),
             ft.Text('Progress Meja A & B', color='#B8CCE3'),
             ft.Divider(color='#42617F'),
-            *[ft.TextButton(item, on_click=lambda e, name=item: self.render(name), style=ft.ButtonStyle(color={'': '#D8E8F7'})) for item in items],
+            *[ft.TextButton(item, on_click=lambda e, name=item: self._navigate(name), style=ft.ButtonStyle(color={'': '#D8E8F7'})) for item in items],
             ft.Container(expand=True),
             ft.Text('Lokal • SQLite', color='#9CB4CB', size=12),
         ], spacing=6))
@@ -55,13 +55,23 @@ class AppShell:
         self.body.content = ft.Container(expand=True, padding=28, content=pages.get(name, self.dashboard)())
         self.page.update()
 
+    def _navigate(self, name):
+        if name == 'Data Progress':
+            self.detail_status = None
+            self.detail_filters = {}
+        self.render(name)
+
+    def _open_all_progress(self, _=None):
+        self.detail_status = None
+        self.detail_filters = {}
+        self.render('Data Progress')
+
     def title(self, title, subtitle=''):
         return ft.Column([ft.Text(title, size=28, weight=ft.FontWeight.BOLD, color=COLORS['text_primary']), ft.Text(subtitle, color=COLORS['text_secondary'])], spacing=4)
 
     def dashboard(self):
         settings = service.get_settings()
         tahun = ft.Dropdown(label='Tahun', width=145, value='Semua', options=[ft.dropdown.Option('Semua'), *[ft.dropdown.Option(str(y)) for y in service.get_distinct_tahun()]])
-        period = ft.Dropdown(label='Periode grafik', width=155, value='monthly', options=[ft.dropdown.Option('daily', 'Harian'), ft.dropdown.Option('weekly', 'Mingguan'), ft.dropdown.Option('monthly', 'Bulanan'), ft.dropdown.Option('yearly', 'Tahunan')])
         content = ft.Column(spacing=18, scroll=ft.ScrollMode.AUTO, expand=True)
 
         def current_filters():
@@ -72,19 +82,20 @@ class AppShell:
             self.detail_filters = dict(filters)
             stats = service.get_dashboard_stats(**filters)
             statuses = service.get_dashboard_status_counts(**filters)
-            periods = service.get_dashboard_period_data(period.value, **filters)
+            period = 'monthly'
+            periods = service.get_dashboard_period_data(period, **filters)
             pics = service.get_dashboard_pic_data(**filters)
             latest = service.get_progress(tahun=filters['tahun'], limit=settings.rows_per_page)
-            content.controls = self._dashboard_content(stats, statuses, periods, pics, latest, period.value, filters, load)
+            content.controls = self._dashboard_content(stats, statuses, periods, pics, latest, period, filters, load)
             self.page.update()
 
         def reset(_):
-            tahun.value = 'Semua'; period.value = 'monthly'
+            tahun.value = 'Semua'
             load()
 
         filter_panel = self._panel(ft.Column([
             ft.Row([ft.Icon(ft.icons.FILTER_ALT_OUTLINED, color=COLORS['primary_light']), ft.Text('Filter analisis', size=16, weight=ft.FontWeight.BOLD), ft.Container(expand=True), ft.TextButton('Reset filter', icon=ft.icons.REFRESH, on_click=reset)], alignment=ft.MainAxisAlignment.START),
-            ft.Row([tahun, period, ft.ElevatedButton('Terapkan', icon=ft.icons.TUNE, on_click=load)], wrap=True, spacing=10),
+            ft.Row([tahun, ft.ElevatedButton('Terapkan', icon=ft.icons.TUNE, on_click=load)], wrap=True, spacing=10),
         ]))
         load()
         return ft.Column([self.title('Dashboard', 'Analisis pencapaian Progress PLSCS Meja A & B'), filter_panel, content], spacing=10, scroll=ft.ScrollMode.AUTO, expand=True)
@@ -104,7 +115,7 @@ class AppShell:
         return [
             ft.Row([self._kpi_card(*item, on_click=(lambda _, s='TERCAPAI': self._open_status_detail(s)) if item[0] == 'Selesai' else (lambda _, s='TIDAK TERCAPAI': self._open_status_detail(s)) if item[0] == 'Tidak tercapai' else None) for item in cards], wrap=True, spacing=12, run_spacing=12),
             ft.Row([self._panel(ft.Column([ft.Text('Target vs realisasi', size=17, weight=ft.FontWeight.BOLD), ft.Text(self._period_label(period), size=12, color=COLORS['text_secondary']), self._bar_chart(periods)]), expand=2), self._panel(ft.Column([ft.Text('Status pekerjaan', size=17, weight=ft.FontWeight.BOLD), self._status_chart(statuses)]), expand=1)], spacing=14),
-            ft.Row([self._panel(ft.Column([ft.Text('Tren pencapaian', size=17, weight=ft.FontWeight.BOLD), self._line_chart(periods)]), expand=2), self._panel(ft.Column([ft.Text('Distribusi PIC', size=17, weight=ft.FontWeight.BOLD), self._pic_chart(pics)]), expand=1)], spacing=14),
+            ft.Row([self._panel(ft.Column([ft.Text('Tren pencapaian', size=17, weight=ft.FontWeight.BOLD), self._line_chart(periods)], spacing=8), expand=2), self._panel(ft.Column([ft.Text('Distribusi PIC', size=17, weight=ft.FontWeight.BOLD), self._pic_chart(pics)]), expand=1)], spacing=14),
             self._panel(self._desk_comparison(filters)),
             self._panel(self._latest_table(latest, reload)),
             self._panel(self._insights(stats, statuses, pics, latest)),
@@ -151,8 +162,24 @@ class AppShell:
         maximum = max(max(float(r['target'] or 0), float(r['realisasi'] or 0)) for r in rows) or 1
         groups = []
         for i, row in enumerate(rows):
-            groups.append(ft.BarChartGroup(x=i, bar_rods=[ft.BarChartRod(from_y=0, to_y=float(row['target'] or 0), width=9, color=COLORS['primary_light'], tooltip=f"Target {service.format_angka(row['target'])}"), ft.BarChartRod(from_y=0, to_y=float(row['realisasi'] or 0), width=9, color=COLORS['success'], tooltip=f"Realisasi {service.format_angka(row['realisasi'])}")]))
-        return ft.BarChart(bar_groups=groups, max_y=maximum * 1.15, height=250, interactive=True, tooltip_bgcolor=COLORS['primary_dark'], bottom_axis=ft.ChartAxis(labels=[ft.ChartAxisLabel(value=i, label=ft.Text(str(r['periode']), size=10)) for i, r in enumerate(rows)], labels_size=30), left_axis=ft.ChartAxis(labels_size=35), horizontal_grid_lines=ft.ChartGridLines(color=COLORS['border'], width=1))
+            groups.append(ft.BarChartGroup(x=i, bar_rods=[ft.BarChartRod(from_y=0, to_y=float(row['target'] or 0), width=12, color=COLORS['primary_light'], tooltip=f"Target {service.format_angka(row['target'])}"), ft.BarChartRod(from_y=0, to_y=float(row['realisasi'] or 0), width=12, color=COLORS['success'], tooltip=f"Realisasi {service.format_angka(row['realisasi'])}")]))
+        period_labels = [
+            ft.ChartAxisLabel(
+                value=i,
+                label=ft.Text(str(row['periode']), size=10, no_wrap=True),
+            )
+            for i, row in enumerate(rows)
+        ]
+        return ft.BarChart(
+            bar_groups=groups,
+            max_y=maximum * 1.2,
+            height=280,
+            interactive=True,
+            tooltip_bgcolor=COLORS['primary_dark'],
+            bottom_axis=ft.ChartAxis(labels=period_labels, labels_size=42),
+            left_axis=ft.ChartAxis(labels_size=52),
+            horizontal_grid_lines=ft.ChartGridLines(color=COLORS['border'], width=1),
+        )
 
     def _line_chart(self, rows):
         if not rows:
@@ -161,7 +188,32 @@ class AppShell:
         for i, row in enumerate(rows):
             target, realisasi = float(row['target'] or 0), float(row['realisasi'] or 0)
             points.append(ft.LineChartDataPoint(i, realisasi / target * 100 if target else 0))
-        return ft.LineChart(data_series=[ft.LineChartData(data_points=points, stroke_width=3, color=COLORS['success'], curved=True, point=True)], min_y=0, max_y=max(100, max((p.y for p in points), default=100) * 1.1), height=250, interactive=True, tooltip_bgcolor=COLORS['primary_dark'], left_axis=ft.ChartAxis(labels_size=35), bottom_axis=ft.ChartAxis(labels=[ft.ChartAxisLabel(value=i, label=ft.Text(str(r['periode']), size=10)) for i, r in enumerate(rows)], labels_size=30), horizontal_grid_lines=ft.ChartGridLines(color=COLORS['border'], width=1))
+        label_step = max(1, (len(rows) + 7) // 8)
+        label_indexes = list(range(0, len(rows), label_step))
+        if label_indexes[-1] != len(rows) - 1:
+            label_indexes.append(len(rows) - 1)
+        labels = [ft.ChartAxisLabel(value=i, label=ft.Text(str(rows[i]['periode']), size=10)) for i in label_indexes]
+        maximum = max((p.y for p in points), default=100)
+        return ft.LineChart(
+            data_series=[ft.LineChartData(
+                data_points=points,
+                stroke_width=3,
+                color=COLORS['success'],
+                curved=True,
+                point=True,
+            )],
+            min_x=-0.5,
+            max_x=max(0.5, len(rows) - 0.5),
+            min_y=0,
+            max_y=max(100, maximum * 1.1),
+            height=270,
+            expand=True,
+            interactive=True,
+            tooltip_bgcolor=COLORS['primary_dark'],
+            left_axis=ft.ChartAxis(labels_size=42),
+            bottom_axis=ft.ChartAxis(labels=labels, labels_size=38),
+            horizontal_grid_lines=ft.ChartGridLines(color=COLORS['border'], width=1),
+        )
 
     def _status_chart(self, statuses):
         values = [('Selesai', statuses.get('selesai', 0), COLORS['success']), ('Tidak tercapai', statuses.get('proses', 0), COLORS['danger'])]
@@ -192,7 +244,7 @@ class AppShell:
         return ft.Container(height=180, alignment=ft.alignment.center, content=ft.Column([ft.Icon(ft.icons.INSERT_CHART_OUTLINED, size=34, color=COLORS['text_light']), ft.Text(message, color=COLORS['text_secondary'])], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER))
 
     def _latest_table(self, rows, reload):
-        header = ft.Row([ft.Text('Rincian pekerjaan terbaru', size=17, weight=ft.FontWeight.BOLD), ft.Container(expand=True), ft.TextButton('Lihat semua data', icon=ft.icons.OPEN_IN_NEW, on_click=lambda _: self.render('Data Progress'))])
+        header = ft.Row([ft.Text('Rincian pekerjaan terbaru', size=17, weight=ft.FontWeight.BOLD), ft.Container(expand=True), ft.TextButton('Lihat semua data', icon=ft.icons.OPEN_IN_NEW, on_click=self._open_all_progress)])
         if not rows:
             return ft.Column([header, ft.Text('Belum ada data pekerjaan pada filter aktif.', color=COLORS['text_secondary'])])
         table_rows = []
@@ -262,12 +314,10 @@ class AppShell:
 
     def input_progress(self):
         existing = service.get_progress_by_id(self.editing_id) if self.editing_id else None
-        tanggal = self.date_picker('Tanggal', existing.tanggal if existing else None)
-        meja = ft.Dropdown(label='Meja kerja', width=150, options=[ft.dropdown.Option(x) for x in MEJA_OPTIONS], value=existing.meja if existing else MEJA_OPTIONS[0])
-        pic_options = service.get_pic_names(aktif_only=True)
-        if existing and existing.nama_pic and existing.nama_pic not in pic_options:
-            pic_options.insert(0, existing.nama_pic)
-        pic = ft.Dropdown(label='Nama PIC', value=existing.nama_pic if existing else None, width=230, options=[ft.dropdown.Option(value) for value in pic_options])
+        tanggal = self.date_picker('Tanggal', existing.tanggal if existing else None, width=None)
+        tanggal.expand = True
+        meja = ft.Dropdown(label='Meja kerja', expand=True, options=[ft.dropdown.Option(x) for x in MEJA_OPTIONS], value=existing.meja if existing else MEJA_OPTIONS[0])
+        pic = ft.TextField(label='Nama PIC', value=existing.nama_pic if existing else '', expand=True)
         pekerjaan_options = list(PEKERJAAN_OPTIONS)
         if existing and existing.pekerjaan and existing.pekerjaan not in pekerjaan_options:
             pekerjaan_options.insert(0, existing.pekerjaan)
@@ -275,7 +325,6 @@ class AppShell:
         rincian = ft.TextField(label='Rincian pengerjaan', value=existing.rincian_pengerjaan if existing else '', multiline=True, min_lines=2)
         target = ft.TextField(label='Target', value=str(existing.target) if existing and existing.target is not None else '', width=150, keyboard_type=ft.KeyboardType.NUMBER)
         realisasi = ft.TextField(label='Realisasi', value=str(existing.realisasi) if existing and existing.realisasi is not None else '', width=150, keyboard_type=ft.KeyboardType.NUMBER)
-        keterangan = ft.TextField(label='Keterangan', value=existing.keterangan if existing else '', multiline=True, min_lines=2)
 
         def parse_num(value):
             if not value.strip():
@@ -284,7 +333,7 @@ class AppShell:
 
         def save(e):
             try:
-                p = Progress(tanggal=tanggal.data['iso'], meja=meja.value, nama_pic=(pic.value or '').strip(), pekerjaan=(pekerjaan.value or '').strip(), rincian_pengerjaan=rincian.value.strip(), target=parse_num(target.value), realisasi=parse_num(realisasi.value), keterangan=keterangan.value.strip())
+                p = Progress(tanggal=tanggal.data['iso'], meja=meja.value, nama_pic=(pic.value or '').strip(), pekerjaan=(pekerjaan.value or '').strip(), rincian_pengerjaan=rincian.value.strip(), target=parse_num(target.value), realisasi=parse_num(realisasi.value), keterangan=existing.keterangan if existing else '')
                 if service.check_duplicate(p.tanggal, p.meja, p.nama_pic, p.pekerjaan, exclude_id=self.editing_id):
                     self.toast('Peringatan: data dengan kombinasi yang sama sudah ada.')
                     return
@@ -296,21 +345,23 @@ class AppShell:
                 service.ensure_pic_exists(p.nama_pic)
                 was_edit = bool(p.id)
                 self.editing_id = None
+                self.detail_status = None
+                self.detail_filters = {}
                 self.toast('Data progress berhasil diperbarui.' if was_edit else 'Data progress berhasil disimpan.')
-                self.render('Data Progress')
+                self._open_all_progress()
             except Exception as ex:
                 self.toast(str(ex), error=True)
 
         def reset(e):
-            for field in [rincian, target, realisasi, keterangan]: field.value = ''
-            pic.value = None
+            for field in [rincian, target, realisasi]: field.value = ''
+            pic.value = ''
             pekerjaan.value = None
             tanggal.data['iso'] = date.today().isoformat()
             tanggal.value = date.today().strftime('%d/%m/%Y')
             tanggal.data['picker'].value = date.today()
             self.page.update()
 
-        return ft.Column([self.title('Edit Progress' if existing else 'Input Progress Harian', 'Catat pekerjaan dan hasil aktual ke database lokal'), ft.Row([tanggal, meja, pic]), ft.Row([pekerjaan]), rincian, ft.Row([target, realisasi]), keterangan, ft.Row([ft.ElevatedButton('Simpan', on_click=save), ft.OutlinedButton('Reset Form', on_click=reset), ft.TextButton('Batal', on_click=lambda _: (setattr(self, 'editing_id', None), self.render('Data Progress')))])], scroll=ft.ScrollMode.AUTO)
+        return ft.Column([self.title('Edit Progress' if existing else 'Input Progress Harian', 'Catat pekerjaan dan hasil aktual ke database lokal'), tanggal, meja, pic, pekerjaan, rincian, ft.Row([target, realisasi]), ft.Row([ft.ElevatedButton('Simpan', on_click=save), ft.OutlinedButton('Reset Form', on_click=reset), ft.TextButton('Batal', on_click=lambda _: (setattr(self, 'editing_id', None), self._open_all_progress()))])], scroll=ft.ScrollMode.AUTO)
 
     def data_progress(self):
         initial_year = self.detail_filters.get('tahun')
